@@ -1,6 +1,6 @@
 import numpy as np
 
-def extract_features(gesture):
+def extract_features(gesture): # 
     if len(gesture) < 2:
         return [0]*15
 

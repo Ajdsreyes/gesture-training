@@ -5,7 +5,7 @@ from sklearn.svm import SVC
 from sklearn.metrics import classification_report
 from sklearn.impute import SimpleImputer
 
-def train_model(X, y):
+def train_model(X, y): #
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
@@ -23,7 +23,7 @@ def train_model(X, y):
         "svm__gamma": ["scale", "auto"]
     }
 
-    grid = GridSearchCV(pipeline, param_grid, cv=5, verbose=1)
+    grid = GridSearchCV(pipeline, param_grid, cv=5, verbose=1) #
     grid.fit(X_train, y_train)
 
     model = grid.best_estimator_

@@ -1,7 +1,7 @@
 import numpy as np
 from feature_extraction import extract_features
 
-def generate_dummy_gesture(label):
+def generate_dummy_gesture(label): #
     gesture = []
     t = 0
 
@@ -17,7 +17,7 @@ def generate_dummy_gesture(label):
     return gesture, label
 
 
-def create_dataset(n=100):
+def create_dataset(n=100): #
     data = []
     labels = []
 

@@ -1,0 +1,18 @@
+{
+  "timestamp": "2026-05-07T12:00:00Z",
+  "type": "swipe",
+  "touch_position": [
+    {
+      "time": 10,
+      "x": 0.2,
+      "y": 0.3,
+      "pressure": 0.5
+    },
+    {
+      "time": 20,
+      "x": 0.4,
+      "y": 0.5,
+      "pressure": 0.6
+    }
+  ]
+}
