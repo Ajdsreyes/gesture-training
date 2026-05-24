@@ -4,10 +4,11 @@ def extract_features(gesture): #
     if len(gesture) < 2:
         return [0]*15
 
-    times = np.array([p["time"] for p in gesture])
+    times = np.array([p["time"] for p in gesture]) #
+    times = times - times[0] #
     xs = np.array([p["x"] for p in gesture])
     ys = np.array([p["y"] for p in gesture])
-    pressures = np.array([p["pressure"] for p in gesture])
+    pressures = np.array([p.get("pressure", 0) for p in gesture])
 
     # CORE FEATURES
     duration = times[-1] - times[0]
@@ -48,7 +49,7 @@ def extract_features(gesture): #
     end_ifd = 0
     scale_factor = 1
 
-    if "fingers" in gesture[0] and len(gesture[0]["fingers"]) == 2:
+    if gesture and "fingers" in gesture[0] and len(gesture[0]["fingers"]) == 2:
         f_start = gesture[0]["fingers"]
         f_end = gesture[-1]["fingers"]
 

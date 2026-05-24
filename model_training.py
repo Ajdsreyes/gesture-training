@@ -1,36 +1,53 @@
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
-from sklearn.metrics import classification_report
-from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+import joblib
 
-def train_model(X, y): #
 
+def train_model(X, y):
+
+    # CHECK IF THERE ARE AT LEAST 2 USERS
+    if len(set(y)) < 2:
+        raise ValueError(
+            "Need at least 2 different users/classes"
+        )
+
+    # SPLIT DATA
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
+        X,
+        y,
+        test_size=0.2,
+        random_state=42
     )
 
-    pipeline = Pipeline([
-        ("imputer", SimpleImputer(strategy="constant", fill_value=0)),
-        ("scaler", StandardScaler()),
-        ("svm", SVC(probability=True))
-    ])
+    # CREATE SVM MODEL
+    model = SVC(kernel="rbf")
 
-    param_grid = {
-        "svm__kernel": ["rbf", "linear"],
-        "svm__C": [0.1, 1, 10],
-        "svm__gamma": ["scale", "auto"]
+    # TRAIN MODEL
+    model.fit(X_train, y_train)
+
+    # TEST MODEL
+    predictions = model.predict(X_test)
+
+    # CALCULATE ACCURACY
+    accuracy = accuracy_score(y_test, predictions)
+
+    # SAVE MODEL
+    joblib.dump(model, "svm_model.pkl")
+
+    return {
+        "accuracy": accuracy
     }
 
-    grid = GridSearchCV(pipeline, param_grid, cv=5, verbose=1) #
-    grid.fit(X_train, y_train)
 
-    model = grid.best_estimator_
+def evaluate_model(features):
 
-    y_pred = model.predict(X_test)
+    # LOAD SAVED MODEL
+    model = joblib.load("svm_model.pkl")
 
-    print("\nClassification Report:")
-    print(classification_report(y_test, y_pred))
+    # PREDICT USER
+    prediction = model.predict([features])
 
-    return model
+    return {
+        "predicted_user": prediction[0]
+    }

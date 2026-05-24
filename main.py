@@ -1,14 +1,66 @@
-from data_generation import create_dataset
-from model_training import train_model
-import joblib
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import List
 
-if __name__ == "__main__":
+from model_training import (
+    train_model,
+    evaluate_model
+)
 
-    print("Generating dataset...")
-    X, y = create_dataset(100)
+app = FastAPI()
 
-    print("Training SVM model...")
-    model = train_model(X, y)
 
-    joblib.dump(model, "gesture_svm_model.pkl")
-    print("\nModel saved as gesture_svm_model.pkl")
+# =========================
+# REQUEST MODELS
+# =========================
+
+class TrainRequest(BaseModel):
+    X_data: List[List[float]]
+    y_data: List[str]
+
+
+class EvaluateRequest(BaseModel):
+    features: List[float]
+
+
+# =========================
+# ROOT
+# =========================
+
+@app.get("/")
+def home():
+    return {
+        "message": "Gesture Authentication API Running"
+    }
+
+
+# =========================
+# BUILD / TRAIN MODEL
+# =========================
+
+@app.post("/build-model")
+def build_model(data: TrainRequest):
+
+    result = train_model(
+        data.X_data,
+        data.y_data
+    )
+
+    return {
+        "message": "Model trained successfully",
+        "result": result
+    }
+
+
+# =========================
+# EVALUATE GESTURE
+# =========================
+
+@app.post("/evaluate")
+def evaluate(data: EvaluateRequest):
+
+    result = evaluate_model(
+        data.features
+    )
+
+    return result
