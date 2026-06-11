@@ -25,6 +25,35 @@ def _split_fingers(events: List[TouchEvent]):
     return f0, f1
 
 
+def _preprocess_events(events: List[TouchEvent]) -> List[TouchEvent]:
+    """Return a new event list with:
+    - timestamps rebased to 0 at the first event
+    - x/y coordinates normalised to [0, 1] within the gesture's bounding box
+      (degenerate axes where min == max are left at 0.0)
+    """
+    if not events:
+        return events
+
+    t0   = events[0].timestamp
+    xs   = np.array([e.x for e in events])
+    ys   = np.array([e.y for e in events])
+    x_min, x_max = xs.min(), xs.max()
+    y_min, y_max = ys.min(), ys.max()
+    x_range = x_max - x_min if x_max - x_min > 1e-6 else 1.0
+    y_range = y_max - y_min if y_max - y_min > 1e-6 else 1.0
+
+    return [
+        TouchEvent(
+            timestamp = e.timestamp - t0,
+            x         = (e.x - x_min) / x_range,
+            y         = (e.y - y_min) / y_range,
+            pressure  = e.pressure,
+            finger_id = e.finger_id,
+        )
+        for e in events
+    ]
+
+
 def _core_features(events: List[TouchEvent]) -> np.ndarray:
     if len(events) < 2:
         return np.zeros(8)
@@ -92,9 +121,11 @@ class FeatureExtractor:
 
     def gesture_to_vector(self, gesture: Gesture) -> np.ndarray:
 
-        events = gesture.events
+        events = _preprocess_events(gesture.events)
 
         if gesture.is_multitouch:
+            # Split after joint preprocessing so both fingers share the same
+            # bounding box and time origin, preserving inter-finger geometry.
             f0, f1 = _split_fingers(events)
             primary = f0 if f0 else events  # fall back gracefully
             core    = _core_features(primary)
