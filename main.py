@@ -33,9 +33,8 @@ from evaluator import (
     compute_frr,
 )
 
-# ---------------------------------------------------------------------------
+
 # App setup
-# ---------------------------------------------------------------------------
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,9 +55,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------------------------------------------------
-# In-memory stores  (replace with a DB for production)
-# ---------------------------------------------------------------------------
+
+# In-memory stores  
 
 class AppState:
     def __init__(self):
@@ -71,24 +69,20 @@ class AppState:
 
 state = AppState()
 
-# ---------------------------------------------------------------------------
-# In-memory training buffer for frontend submissions (keyed by participant_id)
-# ---------------------------------------------------------------------------
+
+# In-memory training 
 
 training_buffer: Dict[str, List[GestureSequence]] = defaultdict(list)
 MIN_TRAIN_SEQS = 5
 
 
-# ---------------------------------------------------------------------------
 # Pydantic schemas
-# ---------------------------------------------------------------------------
 
 class GenerateDatasetRequest(BaseModel):
     n_participants: int   = Field(10,  ge=2,  le=100)
     n_sessions:     int   = Field(3,   ge=1,  le=10)
     n_repetitions:  int   = Field(10,  ge=3,  le=50)
     seed:           int   = Field(42)
-
 
 class TrainModelRequest(BaseModel):
     dataset_id:     str
@@ -98,7 +92,6 @@ class TrainModelRequest(BaseModel):
     candidate_nus:  List[float]  = Field([0.05, 0.1, 0.2, 0.3, 0.5])
     kernel:         str          = Field("rbf")
 
-
 class BatchTrainRequest(BaseModel):
     dataset_id:    str
     train_session: int          = Field(1, ge=1)
@@ -106,14 +99,12 @@ class BatchTrainRequest(BaseModel):
     candidate_nus: List[float]  = Field([0.05, 0.1, 0.2, 0.3, 0.5])
     kernel:        str          = Field("rbf")
 
-
 class TouchEventSchema(BaseModel):
     timestamp:  float
     x:          float
     y:          float
     pressure:   float = Field(ge=0.0, le=1.0)
     finger_id:  int   = Field(0, ge=0)
-
 
 class GestureSchema(BaseModel):
     gesture_type:   str
@@ -123,27 +114,22 @@ class GestureSchema(BaseModel):
     participant_id: str = "unknown"
     repetition:     int = 0
 
-
 class GestureSequenceSchema(BaseModel):
     gestures:       List[GestureSchema] = Field(..., min_length=3, max_length=3)
     participant_id: str = "unknown"
     session_id:     int = 1
 
-
-# CHANGED: replaces old AuthenticateRequest to match frontend payload shape
 class AuthenticateRequest(BaseModel):
     participant_id: str
     session_id:     int
     model_id:       str
     sequence:       "SequencePayload"
 
-
 class EvaluateRequest(BaseModel):
     dataset_id:    str
     candidate_nus: List[float] = Field([0.05, 0.1, 0.2, 0.3, 0.5])
     kernel:        str         = Field("rbf")
     test_session:  int         = Field(3, ge=1)
-
 
 class DatasetInfo(BaseModel):
     dataset_id:     str
@@ -152,7 +138,6 @@ class DatasetInfo(BaseModel):
     participants:   List[str]
     sessions:       List[int]
 
-
 class ModelInfo(BaseModel):
     model_id:       str
     participant_id: str
@@ -160,14 +145,12 @@ class ModelInfo(BaseModel):
     threshold:      float
     is_fitted:      bool
 
-
 class AuthenticateResponse(BaseModel):
     accepted:       bool
     score:          float
     threshold:      float
     model_id:       str
     participant_id: str
-
 
 class ScoreDistributionResponse(BaseModel):
     model_id:        str
@@ -180,7 +163,6 @@ class ScoreDistributionResponse(BaseModel):
     dprime:          float
     accuracy:        float
     threshold:       float
-
 
 class AggregateMetricsResponse(BaseModel):
     session_id:  int
@@ -196,7 +178,6 @@ class AggregateMetricsResponse(BaseModel):
     mean_acc:    float
     std_acc:     float
 
-
 class UserMetricsResponse(BaseModel):
     participant_id: str
     session_id:     int
@@ -207,12 +188,10 @@ class UserMetricsResponse(BaseModel):
     accuracy:       float
     threshold:      float
 
-
 class EvalJobResponse(BaseModel):
     job_id:  str
     status:  str
     message: str
-
 
 class JobStatusResponse(BaseModel):
     job_id:  str
@@ -221,9 +200,7 @@ class JobStatusResponse(BaseModel):
     result:  Optional[dict] = None
 
 
-# ---------------------------------------------------------------------------
-# NEW: Pydantic schemas for frontend submit_gestures / authenticate
-# ---------------------------------------------------------------------------
+# frontend submit_gestures / authenticate
 
 class TouchEventPayload(BaseModel):
     timestamp:  float
@@ -232,16 +209,13 @@ class TouchEventPayload(BaseModel):
     pressure:   float = 0.5
     finger_id:  int   = 0
 
-
 class GesturePayload(BaseModel):
     gesture_type: str
     orientation:  str
     events:       List[TouchEventPayload]
 
-
 class SequencePayload(BaseModel):
     gestures: List[GesturePayload]
-
 
 class SubmitGesturesRequest(BaseModel):
     participant_id: str
@@ -250,9 +224,7 @@ class SubmitGesturesRequest(BaseModel):
     mode:           str = "train"
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 def _schema_to_gesture_sequence(schema: GestureSequenceSchema) -> GestureSequence:
     gestures = []
@@ -275,8 +247,6 @@ def _schema_to_gesture_sequence(schema: GestureSequenceSchema) -> GestureSequenc
         session_id=schema.session_id,
     )
 
-
-# NEW: converts flat frontend SequencePayload to GestureSequence
 def _payload_to_gesture_sequence(
     seq: SequencePayload,
     participant_id: str,
@@ -307,7 +277,6 @@ def _payload_to_gesture_sequence(
         session_id     = session_id,
     )
 
-
 def _sequences_by_participant(
     sequences: List[GestureSequence],
 ) -> Dict[str, Dict[int, List[GestureSequence]]]:
@@ -315,7 +284,6 @@ def _sequences_by_participant(
     for s in sequences:
         grouped[s.participant_id][s.session_id].append(s)
     return grouped
-
 
 def _score_sequences(
     model:      UserSVM,
@@ -331,9 +299,7 @@ def _score_sequences(
     return np.array(scores, dtype=float)
 
 
-# ---------------------------------------------------------------------------
 # Routes – Dataset
-# ---------------------------------------------------------------------------
 
 @app.post("/dataset/generate", response_model=DatasetInfo, tags=["Dataset"])
 def generate_dataset(req: GenerateDatasetRequest):
@@ -353,7 +319,6 @@ def generate_dataset(req: GenerateDatasetRequest):
         n_sequences=len(seqs), participants=participants, sessions=sessions,
     )
 
-
 @app.get("/dataset/{dataset_id}", response_model=DatasetInfo, tags=["Dataset"])
 def get_dataset_info(dataset_id: str):
     if dataset_id not in state.datasets:
@@ -366,13 +331,11 @@ def get_dataset_info(dataset_id: str):
         n_sequences=len(seqs), participants=participants, sessions=sessions,
     )
 
-
 @app.get("/dataset/{dataset_id}/participants", response_model=List[str], tags=["Dataset"])
 def list_participants(dataset_id: str):
     if dataset_id not in state.datasets:
         raise HTTPException(404, f"Dataset '{dataset_id}' not found.")
     return sorted({s.participant_id for s in state.datasets[dataset_id]})
-
 
 @app.delete("/dataset/{dataset_id}", tags=["Dataset"])
 def delete_dataset(dataset_id: str):
@@ -382,9 +345,7 @@ def delete_dataset(dataset_id: str):
     return {"message": f"Dataset '{dataset_id}' deleted."}
 
 
-# ---------------------------------------------------------------------------
 # Routes – Training
-# ---------------------------------------------------------------------------
 
 @app.post("/model/train", response_model=ModelInfo, tags=["Training"])
 def train_single_user_model(req: TrainModelRequest):
@@ -508,7 +469,6 @@ def batch_train(req: BatchTrainRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(_run)
     return EvalJobResponse(job_id=job_id, status="pending", message="Batch training queued.")
 
-
 @app.get("/model/{model_id}", response_model=ModelInfo, tags=["Training"])
 def get_model_info(model_id: str):
     if model_id not in state.models:
@@ -518,7 +478,6 @@ def get_model_info(model_id: str):
         model_id=model_id, participant_id=m.participant_id,
         nu=m.svm.nu, threshold=m.threshold, is_fitted=m.svm.is_fitted,
     )
-
 
 @app.get("/models", response_model=List[ModelInfo], tags=["Training"])
 def list_models():
@@ -530,7 +489,6 @@ def list_models():
         for mid, m in state.models.items()
     ]
 
-
 @app.delete("/model/{model_id}", tags=["Training"])
 def delete_model(model_id: str):
     if model_id not in state.models:
@@ -540,9 +498,7 @@ def delete_model(model_id: str):
     return {"message": f"Model '{model_id}' deleted."}
 
 
-# ---------------------------------------------------------------------------
 # Routes – Frontend endpoints (submit_gestures + authenticate)
-# ---------------------------------------------------------------------------
 
 @app.post("/submit_gestures", tags=["Frontend"])
 def submit_gestures(req: SubmitGesturesRequest):
@@ -613,6 +569,7 @@ def submit_gestures(req: SubmitGesturesRequest):
 
 
 # CHANGED: replaces the original /authenticate to match frontend payload shape
+
 @app.post("/authenticate", response_model=AuthenticateResponse, tags=["Authentication"])
 def authenticate(req: AuthenticateRequest):
     """
@@ -645,9 +602,7 @@ def authenticate(req: AuthenticateRequest):
     )
 
 
-# ---------------------------------------------------------------------------
 # Routes – Evaluation pipeline
-# ---------------------------------------------------------------------------
 
 @app.post("/evaluate", response_model=EvalJobResponse, tags=["Evaluation"])
 def run_evaluation(req: EvaluateRequest, background_tasks: BackgroundTasks):
@@ -720,24 +675,20 @@ def run_evaluation(req: EvaluateRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(_run)
     return EvalJobResponse(job_id=job_id, status="pending", message="Evaluation job queued.")
 
-
 @app.get("/evaluate/{job_id}/metrics", tags=["Evaluation"])
 def get_aggregate_metrics(job_id: str):
     job = _require_done_job(job_id)
     return job["result"]["aggregate_by_session"]
-
 
 @app.get("/evaluate/{job_id}/user-results", response_model=List[UserMetricsResponse], tags=["Evaluation"])
 def get_user_results(job_id: str):
     job = _require_done_job(job_id)
     return [UserMetricsResponse(**r) for r in job["result"]["user_results"]]
 
-
 @app.get("/evaluate/{job_id}/stability", tags=["Evaluation"])
 def get_temporal_stability(job_id: str):
     job = _require_done_job(job_id)
     return job["result"]["temporal_stability"]
-
 
 @app.get("/evaluate/{job_id}/significance", tags=["Evaluation"])
 def get_significance_test(job_id: str):
@@ -748,9 +699,7 @@ def get_significance_test(job_id: str):
     return result
 
 
-# ---------------------------------------------------------------------------
 # Routes – Jobs
-# ---------------------------------------------------------------------------
 
 @app.get("/jobs/{job_id}", response_model=JobStatusResponse, tags=["Jobs"])
 def get_job_status(job_id: str):
@@ -771,9 +720,7 @@ def list_jobs():
     ]
 
 
-# ---------------------------------------------------------------------------
 # Routes – Utilities
-# ---------------------------------------------------------------------------
 
 @app.get("/features", tags=["Utilities"])
 def list_feature_names():
@@ -790,9 +737,7 @@ def health_check():
     }
 
 
-# ---------------------------------------------------------------------------
 # Internal helpers
-# ---------------------------------------------------------------------------
 
 def _require_done_job(job_id: str) -> dict:
     if job_id not in state.jobs:

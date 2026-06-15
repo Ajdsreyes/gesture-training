@@ -6,26 +6,22 @@ from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
 
 
-# ---------------------------------------------------------------------------
-# Metric helpers  (unchanged from HMM version)
-# ---------------------------------------------------------------------------
+# Metric
 
 def compute_far(impostor_scores: np.ndarray, threshold: float) -> float:
     if len(impostor_scores) == 0:
         return 0.0
     return float(np.mean(impostor_scores >= threshold))
 
-
 def compute_frr(genuine_scores: np.ndarray, threshold: float) -> float:
     if len(genuine_scores) == 0:
         return 0.0
     return float(np.mean(genuine_scores < threshold))
 
-
 def compute_eer_from_scores(
     genuine_scores:  np.ndarray,
     impostor_scores: np.ndarray,
-    n_thresholds:    int = 1000,
+    n_thresholds:    int = 2000,      # INCREASED from 1000 → 2000 for finer threshold search
 ) -> Tuple[float, float]:
     all_scores = np.concatenate([genuine_scores, impostor_scores])
     lo = all_scores.min() - 1e-6
@@ -40,7 +36,6 @@ def compute_eer_from_scores(
     theta = float(thetas[idx])
     return eer, theta
 
-
 def compute_dprime(
     genuine_scores:  np.ndarray,
     impostor_scores: np.ndarray,
@@ -54,7 +49,6 @@ def compute_dprime(
         return 0.0
     return float((mu_g - mu_i) / denom)
 
-
 def compute_accuracy(
     genuine_scores:  np.ndarray,
     impostor_scores: np.ndarray,
@@ -65,16 +59,80 @@ def compute_accuracy(
     total = len(genuine_scores) + len(impostor_scores)
     return float((tp + tn) / total) if total > 0 else 0.0
 
+def compute_auc(
+    genuine_scores:  np.ndarray,
+    impostor_scores: np.ndarray,
+    n_thresholds:    int = 2000,      
+) -> float:
+    """
+    Compute Area Under the ROC Curve (AUC).
+    ROC plots TPR (1 - FRR) on Y axis vs FPR (FAR) on X axis.
+    AUC = 1.0 is perfect, 0.5 is random, below 0.5 is worse than random.
+    """
+    if len(genuine_scores) == 0 or len(impostor_scores) == 0:
+        return 0.0
 
-# ---------------------------------------------------------------------------
-# Result dataclasses  (unchanged)
-# ---------------------------------------------------------------------------
+    all_scores = np.concatenate([genuine_scores, impostor_scores])
+    lo = all_scores.min() - 1e-6
+    hi = all_scores.max() + 1e-6
+
+    thresholds = np.linspace(lo, hi, n_thresholds)
+    far_arr    = np.array([float(np.mean(impostor_scores >= t)) for t in thresholds])
+    tpr_arr    = np.array([float(np.mean(genuine_scores  >= t)) for t in thresholds])
+
+    order      = np.argsort(far_arr)
+    far_sorted = far_arr[order]
+    tpr_sorted = tpr_arr[order]
+
+    auc = float(np.trapezoid(tpr_sorted, far_sorted))
+    return float(np.clip(auc, 0.0, 1.0))
+
+
+# Lenient threshold
+
+def compute_lenient_threshold(
+    genuine_scores:  np.ndarray,
+    impostor_scores: np.ndarray,
+    frr_target:      float = 0.10,
+    n_thresholds:    int   = 2000,
+) -> float:
+    """
+    Instead of pure EER threshold, find the threshold where FRR <= frr_target.
+    This means we accept more genuine users even if it slightly increases FAR.
+    Falls back to EER threshold if target cannot be met.
+    """
+    if len(genuine_scores) == 0:
+        return 0.0
+
+    all_scores = np.concatenate([genuine_scores, impostor_scores]) \
+        if len(impostor_scores) > 0 \
+        else genuine_scores
+
+    lo = all_scores.min() - 1e-6
+    hi = all_scores.max() + 1e-6
+
+    thetas  = np.linspace(lo, hi, n_thresholds)
+    frr_arr = np.array([float(np.mean(genuine_scores < t)) for t in thetas])
+
+    # Find thresholds where FRR is within target
+    valid = np.where(frr_arr <= frr_target)[0]
+    if len(valid) > 0:
+        return float(thetas[valid[-1]])
+
+    # EER threshold
+    if len(impostor_scores) > 0:
+        _, eer_theta = compute_eer_from_scores(genuine_scores, impostor_scores)
+        return eer_theta
+    return float(np.percentile(genuine_scores, 10))
+
+
+# Result dataclasses
 
 @dataclass
 class UserResult:
     participant_id  : str
     session_id      : int
-    model_type      : str               # 'SVM'
+    model_type      : str
     genuine_scores  : np.ndarray = field(repr=False)
     impostor_scores : np.ndarray = field(repr=False)
     threshold       : float = 0.0
@@ -84,6 +142,7 @@ class UserResult:
     eer      : float = 0.0
     dprime   : float = 0.0
     accuracy : float = 0.0
+    auc      : float = 0.0
 
     def evaluate(self) -> "UserResult":
         g = self.genuine_scores[np.isfinite(self.genuine_scores)]
@@ -95,6 +154,7 @@ class UserResult:
         self.eer, _   = compute_eer_from_scores(g, i)
         self.dprime   = compute_dprime(g, i)
         self.accuracy = compute_accuracy(g, i, self.threshold)
+        self.auc      = compute_auc(g, i)
         return self
 
 
@@ -114,6 +174,8 @@ class AggregateMetrics:
     std_dprime  : float = 0.0
     mean_acc    : float = 0.0
     std_acc     : float = 0.0
+    mean_auc    : float = 0.0
+    std_auc     : float = 0.0
 
     @classmethod
     def from_user_results(
@@ -131,6 +193,7 @@ class AggregateMetrics:
         eers = np.array([r.eer      for r in results])
         dps  = np.array([r.dprime   for r in results])
         accs = np.array([r.accuracy for r in results])
+        aucs = np.array([r.auc      for r in results])
 
         return cls(
             model_type  = model_type,
@@ -141,12 +204,11 @@ class AggregateMetrics:
             mean_eer    = float(eers.mean()),  std_eer    = float(eers.std()),
             mean_dprime = float(dps.mean()),   std_dprime = float(dps.std()),
             mean_acc    = float(accs.mean()),  std_acc    = float(accs.std()),
+            mean_auc    = float(aucs.mean()),  std_auc    = float(aucs.std()),
         )
 
 
-# ---------------------------------------------------------------------------
-# Pipeline  (SVM version — swapped trainer import and model_type label)
-# ---------------------------------------------------------------------------
+# Pipeline
 
 class AuthEvaluationPipeline:
 
@@ -154,8 +216,8 @@ class AuthEvaluationPipeline:
         self.extractor    = extractor
         self.verbose      = verbose
         self.user_results : List[UserResult] = []
-        self.user_models  : Dict[str, object] = {}   # pid -> UserSVM
-        self.normalisers  : Dict[str, object] = {}   # pid -> ZScoreNormaliser
+        self.user_models  : Dict[str, object] = {}
+        self.normalisers  : Dict[str, object] = {}
 
     def _group(self, sequences: list):
         by_pid_sess: Dict[Tuple[str, int], list] = defaultdict(list)
@@ -166,8 +228,9 @@ class AuthEvaluationPipeline:
     def run(
         self,
         all_sequences:  list,
-        candidate_nus:  List[float] = [0.05, 0.1, 0.2, 0.3, 0.5],
-        kernel:         str = "rbf",
+        candidate_nus:  List[float] = [0.01, 0.05, 0.1, 0.2, 0.3, 0.5],  
+        kernel:         str         = "rbf",
+        frr_target:     float       = 0.10,   
     ):
         from feature_extractor import ZScoreNormaliser
         from svm_trainer        import train_user_model
@@ -204,13 +267,35 @@ class AuthEvaluationPipeline:
                 participant_id    = pid,
                 train_sequences   = train_seqs,
                 val_genuine_seqs  = val_seqs if val_seqs else train_seqs[:2],
-                val_impostor_seqs = imp_val_seqs[:20],
+                val_impostor_seqs = imp_val_seqs[:30],   # INCREASED from 20 → 30
                 extractor         = self.extractor,
                 normaliser        = norm,
                 candidate_nus     = candidate_nus,
                 kernel            = kernel,
                 verbose           = self.verbose,
             )
+
+            def _score_list(seqs: list) -> np.ndarray:
+                out = []
+                for s in seqs:
+                    mat = norm.transform(self.extractor.sequence_to_matrix(s))
+                    out.append(model.score(mat))
+                return np.array(out)
+
+            gen_val_scores = _score_list(val_seqs if val_seqs else train_seqs[:5])
+            imp_val_scores = _score_list(imp_val_seqs[:30])
+
+            lenient_theta = compute_lenient_threshold(
+                genuine_scores  = gen_val_scores[np.isfinite(gen_val_scores)],
+                impostor_scores = imp_val_scores[np.isfinite(imp_val_scores)],
+                frr_target      = frr_target,
+            )
+            model.set_threshold(lenient_theta)
+
+            if self.verbose:
+                print(f"  [{pid}] Lenient threshold set to {lenient_theta:.4f} "
+                      f"(FRR target ≤ {frr_target:.0%})")
+
             self.user_models[pid] = model
 
             for eval_sess, eval_seqs in [(2, val_seqs), (3, test_seqs)]:
@@ -249,7 +334,7 @@ class AuthEvaluationPipeline:
                         f"  [{pid}] S{eval_sess}  "
                         f"FAR={result.far:.3f}  FRR={result.frr:.3f}  "
                         f"EER={result.eer:.3f}  d'={result.dprime:.3f}  "
-                        f"Acc={result.accuracy:.3f}"
+                        f"Acc={result.accuracy:.3f}  AUC={result.auc:.3f}"
                     )
 
     def aggregate_by_session(self) -> Dict[int, AggregateMetrics]:
@@ -301,24 +386,25 @@ class AuthEvaluationPipeline:
 
     def print_summary(self):
         agg = self.aggregate_by_session()
-        SEP = "-" * 70
+        SEP = "-" * 80
 
-        print("\n" + "=" * 70)
+        print("\n" + "=" * 80)
         print(" APPENDIX 2  |  Authentication Performance per Session")
-        print("=" * 70)
-        print(f"{'Session':<10}{'Model':<8}{'FAR':>8}{'FRR':>8}{'EER':>8}{'d\'':>8}{'Acc':>8}")
+        print("=" * 80)
+        print(f"{'Session':<10}{'Model':<8}{'FAR':>8}{'FRR':>8}{'EER':>8}{'d\'':>8}{'Acc':>8}{'AUC':>8}")
         print(SEP)
         for sess, m in sorted(agg.items()):
             print(
                 f"{sess:<10}{m.model_type:<8}"
                 f"{m.mean_far:>7.4f} {m.mean_frr:>7.4f} "
-                f"{m.mean_eer:>7.4f} {m.mean_dprime:>7.4f} {m.mean_acc:>7.4f}"
+                f"{m.mean_eer:>7.4f} {m.mean_dprime:>7.4f} "
+                f"{m.mean_acc:>7.4f} {m.mean_auc:>7.4f}"
             )
         print(SEP)
 
-        print("\n" + "=" * 70)
+        print("\n" + "=" * 80)
         print(" APPENDIX 4  |  Template Stability (d') Across Sessions")
-        print("=" * 70)
+        print("=" * 80)
         stab     = self.temporal_stability()
         sessions = sorted({s for v in stab.values() for s in v.keys()})
         print(f"{'Participant':<14}" + "".join(f"S{s}_d':>10" for s in sessions))
@@ -342,9 +428,10 @@ class AuthEvaluationPipeline:
             if common:
                 eer_drift = np.mean([pid_map_l[p].eer    - pid_map_f[p].eer    for p in common])
                 dp_drift  = np.mean([pid_map_l[p].dprime - pid_map_f[p].dprime for p in common])
+                auc_drift = np.mean([pid_map_l[p].auc    - pid_map_f[p].auc    for p in common])
                 print(f"  EER drift : {eer_drift:+.4f} (positive = worse)")
                 print(f"  d'  drift : {dp_drift:+.4f} (negative = less separable)")
-
+                print(f"  AUC drift : {auc_drift:+.4f} (negative = worse)")
 
 if __name__ == "__main__":
     from gesture_data      import generate_synthetic_dataset
@@ -354,12 +441,12 @@ if __name__ == "__main__":
     print("Full SVM Authentication Pipeline Demo")
     print("=" * 60)
 
-    print("\nGenerating synthetic dataset (15 participants, 3 sessions) ...")
+    print("\nGenerating synthetic dataset (30 participants, 3 sessions, 30 reps) ...")
     all_seqs = generate_synthetic_dataset(
-        n_participants=15,
-        n_sessions=3,
-        n_repetitions=10,
-        seed=99,
+        n_participants = 30,   
+        n_sessions     = 3,
+        n_repetitions  = 30,   
+        seed           = 99,
     )
     print(f"Total sequences: {len(all_seqs)}")
 
@@ -367,7 +454,12 @@ if __name__ == "__main__":
 
     print("\nRunning AuthEvaluationPipeline ...")
     pipeline = AuthEvaluationPipeline(extractor, verbose=True)
-    pipeline.run(all_seqs)
+    pipeline.run(
+        all_seqs,
+        candidate_nus = [0.01, 0.05, 0.1, 0.2, 0.3, 0.5],
+        kernel        = "rbf",
+        frr_target    = 0.10,   
+    )
     pipeline.print_summary()
 
     print("\n" + "=" * 60)

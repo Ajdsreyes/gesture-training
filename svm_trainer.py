@@ -10,18 +10,14 @@ from sklearn.model_selection import KFold
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
 
-# ---------------------------------------------------------------------------
 # Sequence flattening
-# ---------------------------------------------------------------------------
 
 def _flatten(X_seq: np.ndarray) -> np.ndarray:
     """Flatten a (T, F) observation matrix into a 1-D vector."""
     return X_seq.flatten()
 
 
-# ---------------------------------------------------------------------------
-# EER threshold  (identical logic to hmm_trainer.py)
-# ---------------------------------------------------------------------------
+# EER threshold  
 
 def compute_eer_threshold(
     genuine_scores:  np.ndarray,
@@ -42,10 +38,7 @@ def compute_eer_threshold(
     return theta_eer, eer, far_curve, frr_curve
 
 
-# ---------------------------------------------------------------------------
 # Nu hyper-parameter selection via cross-validation
-# (mirrors select_n_states_cv in hmm_trainer.py)
-# ---------------------------------------------------------------------------
 
 def select_nu_cv(
     X_flat:        np.ndarray,
@@ -87,9 +80,7 @@ def select_nu_cv(
     return best_nu, mean_scores
 
 
-# ---------------------------------------------------------------------------
-# Core model wrapper  (mirrors LeftRightHMM)
-# ---------------------------------------------------------------------------
+# Core model wrapper 
 
 class OneClassSVMModel:
     """
@@ -129,9 +120,7 @@ class OneClassSVMModel:
         return np.array([self.decision_score(row) for row in X_flat])
 
 
-# ---------------------------------------------------------------------------
 # Per-user model  (mirrors UserHMM)
-# ---------------------------------------------------------------------------
 
 class UserSVM:
     """
@@ -164,9 +153,7 @@ class UserSVM:
         return (s >= self.threshold), s
 
 
-# ---------------------------------------------------------------------------
 # Helper: build flat feature matrix from a list of GestureSequences
-# ---------------------------------------------------------------------------
 
 def sequences_to_flat(sequences: list, extractor, normaliser) -> np.ndarray:
     """
@@ -181,9 +168,7 @@ def sequences_to_flat(sequences: list, extractor, normaliser) -> np.ndarray:
     return np.vstack(rows).astype(np.float64)
 
 
-# ---------------------------------------------------------------------------
 # Main training entry-point  (mirrors train_user_model in hmm_trainer.py)
-# ---------------------------------------------------------------------------
 
 def train_user_model(
     participant_id:    str,
@@ -242,9 +227,7 @@ def train_user_model(
     return user_model
 
 
-# ---------------------------------------------------------------------------
-# Smoke-test  (mirrors __main__ in hmm_trainer.py)
-# ---------------------------------------------------------------------------
+# Smoke-test 
 
 if __name__ == "__main__":
     from collections import defaultdict

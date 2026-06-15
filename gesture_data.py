@@ -38,7 +38,6 @@ class Gesture:
                 f"orientation must be one of {VALID_ORIENTATIONS}, "
                 f"got '{self.orientation}'"
             )
-        
         self.events.sort(key=lambda e: e.timestamp)
 
     @property
@@ -51,9 +50,10 @@ class Gesture:
             return 0.0
         return self.events[-1].timestamp - self.events[0].timestamp
 
+
 @dataclass
 class GestureSequence:
-    
+
     gestures       : List[Gesture]
     participant_id : str = "unknown"
     session_id     : int = 1
@@ -74,25 +74,49 @@ class GestureSequence:
             f"participant='{self.participant_id}', session={self.session_id})"
         )
 
-import numpy as np
+
+# Synthetic gesture generators — INCREASED point counts for richer features
 
 def _make_swipe_events(
-    n_points: int = 20,
-    duration_ms: float = 400,
-    start: tuple = (100, 300),
-    end:   tuple = (600, 300),
-    pressure_mean: float = 0.5,
-    noise: float = 5.0,
-    rng: Optional[np.random.Generator] = None,
+    n_points      : int   = 60,     
+    duration_ms   : float = 400,
+    start         : tuple = (100, 300),
+    end           : tuple = (600, 300),
+    pressure_mean : float = 0.5,
+    noise         : float = 5.0,
+    rng           : Optional[np.random.Generator] = None,
 ) -> List[TouchEvent]:
-    
+
     if rng is None:
         rng = np.random.default_rng()
 
     timestamps = np.linspace(0, duration_ms, n_points)
-    xs = np.linspace(start[0], end[0], n_points) + rng.normal(0, noise, n_points)
-    ys = np.linspace(start[1], end[1], n_points) + rng.normal(0, noise, n_points)
-    pressures = rng.normal(pressure_mean, 0.05, n_points).clip(0.1, 1.0)
+    xs         = np.linspace(start[0], end[0], n_points) + rng.normal(0, noise, n_points)
+    ys         = np.linspace(start[1], end[1], n_points) + rng.normal(0, noise, n_points)
+    pressures  = rng.normal(pressure_mean, 0.05, n_points).clip(0.1, 1.0)
+
+    return [
+        TouchEvent(float(t), float(x), float(y), float(p))
+        for t, x, y, p in zip(timestamps, xs, ys, pressures)
+    ]
+
+def _make_scroll_events(
+    n_points      : int   = 60,     
+    duration_ms   : float = 500,
+    start         : tuple = (300, 100),
+    end           : tuple = (300, 600),
+    pressure_mean : float = 0.5,
+    noise         : float = 4.0,
+    rng           : Optional[np.random.Generator] = None,
+) -> List[TouchEvent]:
+
+    if rng is None:
+        rng = np.random.default_rng()
+
+    timestamps = np.linspace(0, duration_ms, n_points)
+    xs         = np.linspace(start[0], end[0], n_points) + rng.normal(0, noise, n_points)
+    ys         = np.linspace(start[1], end[1], n_points) + rng.normal(0, noise, n_points)
+    pressures  = rng.normal(pressure_mean, 0.05, n_points).clip(0.1, 1.0)
 
     return [
         TouchEvent(float(t), float(x), float(y), float(p))
@@ -100,19 +124,20 @@ def _make_swipe_events(
     ]
 
 def _make_tap_events(
-    x: float = 300,
-    y: float = 400,
-    duration_ms: float = 80,
-    pressure_mean: float = 0.6,
-    rng: Optional[np.random.Generator] = None,
+    x             : float = 300,
+    y             : float = 400,
+    duration_ms   : float = 80,
+    pressure_mean : float = 0.6,
+    rng           : Optional[np.random.Generator] = None,
 ) -> List[TouchEvent]:
 
     if rng is None:
         rng = np.random.default_rng()
-    n = rng.integers(2, 4)
+
+    n = rng.integers(5, 10)
     return [
         TouchEvent(
-            t,
+            float(t),
             x + rng.normal(0, 2),
             y + rng.normal(0, 2),
             float(np.clip(rng.normal(pressure_mean, 0.05), 0.1, 1.0)),
@@ -120,101 +145,156 @@ def _make_tap_events(
         for t in np.linspace(0, duration_ms, n)
     ]
 
-
-def _make_pinch_events(
-    centre: tuple = (400, 400),
-    start_spread: float = 200,
-    end_spread: float = 80,
-    duration_ms: float = 500,
-    n_points: int = 20,
-    rng: Optional[np.random.Generator] = None,
+def _make_zoom_events(
+    centre        : tuple = (400, 400),
+    start_spread  : float = 80,
+    end_spread    : float = 200,
+    duration_ms   : float = 500,
+    n_points      : int   = 60,      
+    rng           : Optional[np.random.Generator] = None,
 ) -> List[TouchEvent]:
 
     if rng is None:
         rng = np.random.default_rng()
 
-    spreads = np.linspace(start_spread, end_spread, n_points)
+    spreads    = np.linspace(start_spread, end_spread, n_points)
     timestamps = np.linspace(0, duration_ms, n_points)
-    events = []
+    events     = []
     for t, s in zip(timestamps, spreads):
-        events.append(TouchEvent(float(t), centre[0] - s/2, centre[1],
-                                 float(np.clip(rng.normal(0.5, 0.05), 0.1, 1.0)),
-                                 finger_id=0))
-        events.append(TouchEvent(float(t), centre[0] + s/2, centre[1],
-                                 float(np.clip(rng.normal(0.5, 0.05), 0.1, 1.0)),
-                                 finger_id=1))
+        events.append(TouchEvent(
+            float(t), centre[0] - s / 2, centre[1],
+            float(np.clip(rng.normal(0.5, 0.05), 0.1, 1.0)),
+            finger_id=0,
+        ))
+        events.append(TouchEvent(
+            float(t), centre[0] + s / 2, centre[1],
+            float(np.clip(rng.normal(0.5, 0.05), 0.1, 1.0)),
+            finger_id=1,
+        ))
+    return events
+
+def _make_pinch_events(
+    centre        : tuple = (400, 400),
+    start_spread  : float = 200,
+    end_spread    : float = 80,
+    duration_ms   : float = 500,
+    n_points      : int   = 60,     
+    rng           : Optional[np.random.Generator] = None,
+) -> List[TouchEvent]:
+
+    if rng is None:
+        rng = np.random.default_rng()
+
+    spreads    = np.linspace(start_spread, end_spread, n_points)
+    timestamps = np.linspace(0, duration_ms, n_points)
+    events     = []
+    for t, s in zip(timestamps, spreads):
+        events.append(TouchEvent(
+            float(t), centre[0] - s / 2, centre[1],
+            float(np.clip(rng.normal(0.5, 0.05), 0.1, 1.0)),
+            finger_id=0,
+        ))
+        events.append(TouchEvent(
+            float(t), centre[0] + s / 2, centre[1],
+            float(np.clip(rng.normal(0.5, 0.05), 0.1, 1.0)),
+            finger_id=1,
+        ))
     return events
 
 
-def generate_synthetic_dataset(
-    n_participants: int = 20,
-    n_sessions: int = 3,
-    n_repetitions: int = 10,
-    seed: int = 42,
-) -> List[GestureSequence]:
-    
-    rng = np.random.default_rng(seed)
-    sequences: List[GestureSequence] = []
+# Synthetic dataset generator 
 
-    # One fixed 3-gesture combination: tap -> swipe -> pinch
+def generate_synthetic_dataset(
+    n_participants : int = 30,        
+    n_sessions     : int = 3,
+    n_repetitions  : int = 30,        
+    seed           : int = 42,
+) -> List[GestureSequence]:
+
+    rng       = np.random.default_rng(seed)
+    sequences : List[GestureSequence] = []
+
+    # Three gesture combination: tap → swipe → scroll
     SEQUENCE_TYPES = [
-        ("tap", "horizontal"),
-        ("swipe", "horizontal"),
-        ("pinch", "horizontal"),
+        ("tap",    "horizontal"),
+        ("swipe",  "horizontal"),
+        ("scroll", "vertical"),
     ]
 
     for p_idx in range(n_participants):
         pid = f"P{p_idx:03d}"
-        # Per-participant behavioural profile
-        speed_factor   = rng.uniform(0.7, 1.4)
-        pressure_bias  = rng.uniform(-0.1, 0.1)
-        spread_factor  = rng.uniform(0.8, 1.3)
+
+        # Per-participant behavioural profile 
+        speed_factor    = rng.uniform(0.5, 1.8)    
+        pressure_bias   = rng.uniform(-0.2, 0.2)   
+        spread_factor   = rng.uniform(0.6, 1.6)    
+        start_x_bias    = rng.uniform(-40, 40)     
+        start_y_bias    = rng.uniform(-40, 40)     
+        noise_level     = rng.uniform(2.0, 10.0)   
 
         for session in range(1, n_sessions + 1):
             # Small session-level drift
-            session_noise = rng.normal(0, 0.02)
+            session_noise = rng.normal(0, 0.03)    
 
             for rep in range(1, n_repetitions + 1):
                 gestures = []
 
                 for g_type, orientation in SEQUENCE_TYPES:
+
                     if g_type == "tap":
                         evs = _make_tap_events(
-                            x=300 + rng.normal(0, 5),
-                            y=400 + rng.normal(0, 5),
-                            duration_ms=80 / speed_factor,
-                            pressure_mean=0.6 + pressure_bias + session_noise,
-                            rng=rng,
+                            x             = 300 + start_x_bias + rng.normal(0, 5),
+                            y             = 400 + start_y_bias + rng.normal(0, 5),
+                            duration_ms   = 80 / speed_factor,
+                            pressure_mean = 0.6 + pressure_bias + session_noise,
+                            rng           = rng,
                         )
+
                     elif g_type == "swipe":
                         evs = _make_swipe_events(
-                            duration_ms=400 / speed_factor,
-                            start=(100, 300),
-                            end=(600, 300),
-                            pressure_mean=0.5 + pressure_bias + session_noise,
-                            rng=rng,
+                            duration_ms   = 400 / speed_factor,
+                            start         = (
+                                100 + start_x_bias + rng.normal(0, 5),
+                                300 + start_y_bias + rng.normal(0, 5),
+                            ),
+                            end           = (
+                                600 + start_x_bias + rng.normal(0, 5),
+                                300 + start_y_bias + rng.normal(0, 5),
+                            ),
+                            pressure_mean = 0.5 + pressure_bias + session_noise,
+                            noise         = noise_level,
+                            rng           = rng,
                         )
-                    else:  # pinch
-                        evs = _make_pinch_events(
-                            start_spread=200 * spread_factor,
-                            end_spread=80 * spread_factor,
-                            duration_ms=500 / speed_factor,
-                            rng=rng,
+
+                    else:  # scroll
+                        evs = _make_scroll_events(
+                            duration_ms   = 500 / speed_factor,
+                            start         = (
+                                300 + start_x_bias + rng.normal(0, 5),
+                                100 + start_y_bias + rng.normal(0, 5),
+                            ),
+                            end           = (
+                                300 + start_x_bias + rng.normal(0, 5),
+                                600 + start_y_bias + rng.normal(0, 5),
+                            ),
+                            pressure_mean = 0.5 + pressure_bias + session_noise,
+                            noise         = noise_level,
+                            rng           = rng,
                         )
 
                     gestures.append(Gesture(
-                        gesture_type=g_type,
-                        orientation=orientation,
-                        events=evs,
-                        session_id=session,
-                        participant_id=pid,
-                        repetition=rep,
+                        gesture_type   = g_type,
+                        orientation    = orientation,
+                        events         = evs,
+                        session_id     = session,
+                        participant_id = pid,
+                        repetition     = rep,
                     ))
 
                 sequences.append(GestureSequence(
-                    gestures=gestures,
-                    participant_id=pid,
-                    session_id=session,
+                    gestures       = gestures,
+                    participant_id = pid,
+                    session_id     = session,
                 ))
 
     return sequences
