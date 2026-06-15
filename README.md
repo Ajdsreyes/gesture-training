@@ -11,13 +11,13 @@ The backend receives gesture feature sequences from the frontend data collection
 Local server:
 
 ```txt
-http://127.0.0.1:8000
+http://127.0.0.1:5000
 ```
 
 Swagger UI:
 
 ```txt
-http://127.0.0.1:8000/docs
+http://127.0.0.1:5000/docs
 ```
 
 ---
@@ -159,7 +159,7 @@ pip install fastapi uvicorn scikit-learn joblib
 ## 2. Start the backend server
 
 ```bash
-uvicorn main:app --reload
+uvicorn main:app --reload --port 5000
 ```
 
 ---
@@ -169,7 +169,7 @@ uvicorn main:app --reload
 Go to:
 
 ```txt
-http://127.0.0.1:8000/docs
+http://127.0.0.1:5000/docs
 ```
 
 ---
